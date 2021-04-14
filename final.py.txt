@@ -1,0 +1,142 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import tensorflow as tf
+from tensorflow.python.keras import Sequential
+from tensorflow.python.keras.layers import Dense
+import gym
+import random
+import numpy as np
+from collections import deque
+import math
+import PIL.Image
+from tf_agents.agents.dqn import dqn_agent
+
+class Dqn:
+    def __init__(self):
+        self.q_network = self._build_model()
+        self.target_q_network = self._build_model()
+    @staticmethod
+    def _build_model():
+        q_network = Sequential()
+        q_network.add(Dense(64, input_dim=4, activation='relu', kernel_initializer='he_uniform'))
+        q_network.add(Dense(32, activation='relu', kernel_initializer='he_uniform'))
+        q_network.add(Dense(2, activation='linear', kernel_initializer='he_uniform'))
+        q_network.compile(optimizer=tf.optimizers.Adam(learning_rate=0.001), loss='mse')
+        return q_network
+    def _policy(self):
+        return np.random.randint(0, 2)
+    def policy(self, state):
+        if np.random.random() < 0.05:
+            return self._policy()
+        return self.mypolicy(state)
+    def mypolicy(self, state):
+        myinput = tf.convert_to_tensor(state[None, :], dtype=tf.float32)
+        q = self.q_network(myinput)
+        action = np.argmax(q.numpy()[0], axis=0)
+        return action
+    def update_network(self):
+        self.target_q_network.set_weights(self.q_network.get_weights())
+    def train(self, myarr):
+        state_arr, next_state_arr, action_arr, reward_arr, done_arr \
+            = myarr
+        this_q = self.q_network(state_arr).numpy()
+        target = np.copy(this_q)
+        next_q = self.target_q_network(next_state_arr).numpy()
+        max_q = np.amax(next_q, axis=1)
+        for i in range(state_arr.shape[0]):
+            target_q = reward_arr[i]
+            if not done_arr[i]:
+                target_q += 0.95 * max_q[i]
+            target[i][action_arr[i]] = target_q
+        training_history = self.q_network.fit(x=state_arr, y=target, verbose=0)
+        loss = training_history.history['loss']
+        return loss
+class ReplayBuffer:
+    def __init__(self):
+        self.experiences = deque(maxlen=1000000)
+    def store_experience(self, state, next_state, reward, action, done):
+        self.experiences.append((state, next_state, reward, action, done))
+    def this_func(self):
+        arr_size = min(128, len(self.experiences))
+        sampled_arr = random.sample(self.experiences, arr_size)
+        state_arr = []
+        next_state_arr = []
+        action_arr = []
+        reward_arr = []
+        done_arr = []
+        for gameplay_experience in sampled_arr:
+            state_arr.append(gameplay_experience[0])
+            next_state_arr.append(gameplay_experience[1])
+            reward_arr.append(gameplay_experience[2])
+            action_arr.append(gameplay_experience[3])
+            done_arr.append(gameplay_experience[4])
+        return np.array(state_arr), np.array(next_state_arr), np.array(
+            action_arr), np.array(reward_arr), np.array(done_arr)
+def evaluation_func(env, agent):
+    total_reward = 0.0
+    for i in range(10):
+        state = env.reset()
+        done = False
+        this_episode_reward = 0.0
+        while not done:
+            action = agent.mypolicy(state)
+            state_nxt, reward, done, _ = env.step(action)
+            this_episode_reward += reward
+            state = state_nxt
+        total_reward += this_episode_reward
+    avg_reward = total_reward / 10
+    return avg_reward
+def store_experiences(env, agent, temp):
+    state = env.reset()
+    done = False
+    while not done:
+        action = agent.policy(state)
+        nxt_state, reward, done, _ = env.step(action)
+        if done:
+            reward = -1.0
+        temp.store_experience(state, nxt_state, reward, action, done)
+        state = nxt_state
+def checkPixels(image):
+    if image(28,64) != (0,0,0):
+        return 1
+    if image(88,100) != (0,0,0):
+        return 2
+    if image(68,85) != (0,0,0):
+        return 4
+    if image(15,100) != (0,0,0):
+        return 3
+    if image(5,85) != (0,0,0):
+        return 5
+def train_model(max_episodes=50000):
+    agent = Dqn()
+    var = ReplayBuffer()
+    env = gym.make('MontezumaRevenge-v0')
+    env_2 = gym.spec('MontezumaRevenge-v0')
+    print(f"Action: {env.action_space}")
+    print(f"Observation: {env.observation_space}")
+    print(f"Episode Step: {env_2.max_episode_steps}")
+    print(f"Action: {env.reward_range}")
+    env.reset()
+    subreward = 0
+    for _ in range(100):
+        store_experiences(env, agent, var)
+    for i in range(max_episodes):
+        store_experiences(env, agent, var)
+        a = env.render(mode="rgb_array")
+        experience_array = var.this_func()
+        loss = agent.train(experience_array)
+        avg_reward = evaluation_func(env, agent)
+        temp = checkPixels(a)
+        if temp <= 4
+            if subreward == 0.05:
+                subreward = 0.01
+            else:
+                subreward = 0.05
+        else:
+            subreward = 0.07
+        print(f'Reward: {avg_reward+subreward}')
+        if i % 20 == 0:
+            agent.update_network()
+    env.close()
+train_model()
